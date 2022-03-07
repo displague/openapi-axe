@@ -60,7 +60,7 @@ func main() {
 		for method, op := range p.Operations {
 			name = op.OperationID
 			filename := path.Join(".", pathsDir, name+".yaml")
-			if err = appendObject(p, path.Join(dir, filename)); err != nil {
+			if err = writeObject(p, path.Join(dir, filename)); err != nil {
 				panic(err)
 			}
 			p.Ref = fmt.Sprintf(filename, "#/paths/%s", name)
