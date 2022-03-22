@@ -8,6 +8,7 @@ import (
 	"path"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/go-openapi/jsonpointer"
 	"sigs.k8s.io/yaml"
 )
 
@@ -24,7 +25,7 @@ var (
 	pathsDir         = "paths"
 	tagsDir          = "tags"
 
-	filemode = fs.FileMode(0644)
+	filemode = fs.FileMode(0o644)
 )
 
 func main() {
@@ -42,6 +43,10 @@ func main() {
 		panic(err)
 	}
 
+	if err = os.MkdirAll(path.Join(dir, schemaDir), os.FileMode(0o1755)); err != nil {
+		panic(err)
+	}
+
 	for name, schema := range doc.Components.Schemas {
 		if schema.Ref != "" {
 			continue
@@ -53,19 +58,44 @@ func main() {
 		schema.Ref = filename
 	}
 
+	if err = os.MkdirAll(path.Join(dir, pathsDir), os.FileMode(0o1755)); err != nil {
+		panic(err)
+	}
+
 	for name, p := range doc.Paths {
 		if p.Ref != "" {
 			continue
 		}
-		for method, op := range p.Operations {
-			name = op.OperationID
-			filename := path.Join(".", pathsDir, name+".yaml")
-			if err = writeObject(p, path.Join(dir, filename)); err != nil {
+
+		filename := path.Join(dir, pathsDir, jsonpointer.Escape(name)+".yaml")
+		refName := path.Join(pathsDir, jsonpointer.Escape(name)+".yaml")
+		if err = writeObject(p, filename); err != nil {
+			panic(err)
+		}
+		refOp := &openapi3.PathItem{Ref: fmt.Sprintf("./%s", refName)}
+		doc.Paths[name] = refOp
+		/**
+		for verb, op := range p.Operations() {
+			opDir := path.Join(dir, pathsDir, jsonpointer.Escape(name))
+			filename := strings.ToLower(verb) + ".yaml"
+			refName := path.Join(pathsDir, jsonpointer.Escape(name), filename)
+			if err = os.MkdirAll(opDir, os.FileMode(0o1755)); err != nil {
 				panic(err)
 			}
-			p.Ref = fmt.Sprintf(filename, "#/paths/%s", name)
+			if err = writeObject(op, path.Join(opDir, filename)); err != nil {
+				panic(err)
+			}
+			refOp := &openapi3.Operation{Ref: fmt.Sprintf("#/%s", refName)}
+			op = refOp
 		}
+		**/
 	}
+
+	if err = writeObject(doc, path.Join(dir, "openapi3.yaml")); err != nil {
+		panic(err)
+	}
+
+	return
 }
 
 func writeObject(object interface{}, filename string) error {
@@ -79,7 +109,7 @@ func writeObject(object interface{}, filename string) error {
 func appendObject(object interface{}, filename string) error {
 	f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, filemode)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	defer f.Close()
@@ -88,6 +118,7 @@ func appendObject(object interface{}, filename string) error {
 		return err
 	}
 	if _, err = f.Write([]byte(fmt.Sprintf("---\n%s\n", data))); err != nil {
-		panic(err)
+		return err
 	}
+	return nil
 }
